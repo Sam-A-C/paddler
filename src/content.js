@@ -24,7 +24,7 @@ export const CONTENT = {
   // Overall verdict, keyed by the worst factor rating.
   verdicts: {
     poor: {
-      title: 'Not a good day for it Giù',
+      title: 'Not right now Giù',
       blurb: 'Conditions look unfavourable for sea paddle-boarding today.',
     },
     ok: {
@@ -32,7 +32,7 @@ export const CONTENT = {
       blurb: 'It could work, but conditions are marginal. Check locally before heading out.',
     },
     good: {
-      title: 'Great day to paddle Giù!',
+      title: 'Great time to paddle Giù!',
       blurb: 'Conditions look good for getting out on the water.',
     },
   },
