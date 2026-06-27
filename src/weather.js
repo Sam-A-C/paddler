@@ -28,28 +28,51 @@ function currentHourIndex(times) {
   return best
 }
 
-// Walk the tidal height series to find the next high and low turning points.
-function nextTideEvents(times, heights, fromIndex) {
+// Walk the tidal height series to find high/low turning points, then pick out
+// the next ones (for display) and the nearest ones in time (for rating — we may
+// be just *after* a high tide, which a "next" lookup would miss).
+function tideInfo(times, heights) {
+  const now = Date.now()
   const events = []
-  for (let i = Math.max(fromIndex, 1); i < heights.length - 1; i++) {
+  for (let i = 1; i < heights.length - 1; i++) {
     const prev = heights[i - 1]
     const curr = heights[i]
     const next = heights[i + 1]
     if (prev == null || curr == null || next == null) continue
+    const ms = new Date(times[i]).getTime()
     if (curr >= prev && curr > next) {
-      events.push({ type: 'high', time: times[i], height: curr })
+      events.push({ type: 'high', time: times[i], ms, height: curr })
     } else if (curr <= prev && curr < next) {
-      events.push({ type: 'low', time: times[i], height: curr })
+      events.push({ type: 'low', time: times[i], ms, height: curr })
     }
   }
-  const nextHigh = events.find((e) => e.type === 'high') || null
-  const nextLow = events.find((e) => e.type === 'low') || null
+
+  const nearestOfType = (type) =>
+    events
+      .filter((e) => e.type === type)
+      .reduce((best, e) => {
+        const d = Math.abs(e.ms - now)
+        return !best || d < best._d ? { ...e, _d: d } : best
+      }, null)
+
+  const nextOfType = (type) =>
+    events.find((e) => e.type === type && e.ms >= now) || null
+
+  const nextHigh = nextOfType('high')
+  const nextLow = nextOfType('low')
   // Rising if the upcoming event is a high tide.
   let trend = 'steady'
-  if (nextHigh && nextLow) trend = nextHigh.time < nextLow.time ? 'rising' : 'falling'
+  if (nextHigh && nextLow) trend = nextHigh.ms < nextLow.ms ? 'rising' : 'falling'
   else if (nextHigh) trend = 'rising'
   else if (nextLow) trend = 'falling'
-  return { nextHigh, nextLow, trend }
+
+  return {
+    trend,
+    nextHigh,
+    nextLow,
+    nearestHigh: nearestOfType('high'),
+    nearestLow: nearestOfType('low'),
+  }
 }
 
 export async function fetchConditions() {
@@ -65,7 +88,7 @@ export async function fetchConditions() {
 
   const h = marine.hourly
   const idx = currentHourIndex(h.time)
-  const tide = nextTideEvents(h.time, h.sea_level_height_msl, idx)
+  const tide = tideInfo(h.time, h.sea_level_height_msl)
 
   return {
     observedAt: forecast.current.time,
@@ -82,6 +105,8 @@ export async function fetchConditions() {
       trend: tide.trend,
       nextHigh: tide.nextHigh,
       nextLow: tide.nextLow,
+      nearestHigh: tide.nearestHigh,
+      nearestLow: tide.nearestLow,
     },
   }
 }

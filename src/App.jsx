@@ -67,7 +67,7 @@ export default function App() {
 }
 
 function Result({ conditions, result, onRefresh }) {
-  const { verdict, factors, tide } = result
+  const { verdict, factors, tideTimes } = result
   return (
     <>
       <section className={`verdict verdict-${verdict.level}`}>
@@ -90,19 +90,12 @@ function Result({ conditions, result, onRefresh }) {
         ))}
       </section>
 
-      {tide && (
-        <section className="tide">
-          <h2>🌒 Tide</h2>
-          <p>
-            Currently <strong>{tide.trend}</strong>
-            {tide.height != null && <> · {tide.height.toFixed(2)} m</>}
-          </p>
-          <p className="tide-times">
-            {tide.nextHigh && <>Next high {tide.nextHigh}</>}
-            {tide.nextHigh && tide.nextLow && '  ·  '}
-            {tide.nextLow && <>Next low {tide.nextLow}</>}
-          </p>
-        </section>
+      {tideTimes && (tideTimes.nextHigh || tideTimes.nextLow) && (
+        <p className="tide-times">
+          {tideTimes.nextHigh && <>Next high {tideTimes.nextHigh}</>}
+          {tideTimes.nextHigh && tideTimes.nextLow && '  ·  '}
+          {tideTimes.nextLow && <>Next low {tideTimes.nextLow}</>}
+        </p>
       )}
 
       <button className="refresh" onClick={onRefresh}>

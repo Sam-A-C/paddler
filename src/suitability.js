@@ -61,8 +61,9 @@ export function evaluate(conditions) {
     },
   ]
 
-  // Tide is shown for context (access/safety) but isn't a pass/fail factor.
-  const tide = buildTideFactor(conditions.tide)
+  // Tide is a rated factor too: best around high water.
+  const tideFactor = buildTideFactor(conditions.tide)
+  if (tideFactor) factors.push(tideFactor)
 
   const worst = factors.reduce(
     (acc, f) => (RATING_RANK[f.rating] > RATING_RANK[acc] ? f.rating : acc),
@@ -87,19 +88,47 @@ export function evaluate(conditions) {
     },
   }[worst]
 
-  return { verdict, factors, tide }
+  // Supplemental tide timings, shown as a small caption beneath the factors.
+  const tideTimes = buildTideTimes(conditions.tide)
+
+  return { verdict, factors, tideTimes }
+}
+
+const fmtTime = (t) =>
+  t ? new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'
+
+// Best around high water: green from 2h before to 1h after high tide,
+// red within 1h of low tide, amber otherwise.
+function rateTide(tide) {
+  if (!tide?.nearestHigh) return 'ok'
+  const now = Date.now()
+  const minsFromHigh = (now - new Date(tide.nearestHigh.time).getTime()) / 60000
+  if (minsFromHigh >= -120 && minsFromHigh <= 60) return 'good'
+  if (tide.nearestLow) {
+    const minsFromLow = Math.abs(now - new Date(tide.nearestLow.time).getTime()) / 60000
+    if (minsFromLow <= 60) return 'poor'
+  }
+  return 'ok'
 }
 
 function buildTideFactor(tide) {
   if (!tide) return null
-  const fmt = (t) =>
-    t
-      ? new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-      : '—'
+  const arrow = tide.trend === 'rising' ? '↑' : tide.trend === 'falling' ? '↓' : ''
+  const height = tide.height != null ? `${tide.height.toFixed(1)} m` : '—'
   return {
-    height: tide.height,
-    trend: tide.trend,
-    nextHigh: tide.nextHigh ? fmt(tide.nextHigh.time) : null,
-    nextLow: tide.nextLow ? fmt(tide.nextLow.time) : null,
+    key: 'tide',
+    label: 'Tide',
+    value: tide.height,
+    display: `${arrow} ${height}`.trim(),
+    rating: rateTide(tide),
+    icon: '🌒',
+  }
+}
+
+function buildTideTimes(tide) {
+  if (!tide) return null
+  return {
+    nextHigh: tide.nextHigh ? fmtTime(tide.nextHigh.time) : null,
+    nextLow: tide.nextLow ? fmtTime(tide.nextLow.time) : null,
   }
 }
