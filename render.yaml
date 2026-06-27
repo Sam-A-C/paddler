@@ -1,0 +1,16 @@
+# Render Blueprint — deploys Paddler as a static site.
+# In Render: New + → Blueprint → connect this GitHub repo.
+services:
+  - type: web
+    name: paddler
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    # Single-page app: serve index.html for any unknown path.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 22
