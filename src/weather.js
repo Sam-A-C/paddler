@@ -1,4 +1,5 @@
 import { LOCATION } from './config.js'
+import { CONTENT } from './content.js'
 
 const MARINE_URL =
   `https://marine-api.open-meteo.com/v1/marine` +
@@ -9,8 +10,8 @@ const MARINE_URL =
 const FORECAST_URL =
   `https://api.open-meteo.com/v1/forecast` +
   `?latitude=${LOCATION.lat}&longitude=${LOCATION.lon}` +
-  `&current=temperature_2m,wind_speed_10m,precipitation,weather_code` +
-  `&daily=temperature_2m_max,wind_speed_10m_max,precipitation_sum,weather_code` +
+  `&current=temperature_2m,weather_code` +
+  `&hourly=temperature_2m,wind_speed_10m,precipitation` +
   `&timezone=auto&forecast_days=1`
 
 // Index of the hourly entry closest to "now".
@@ -26,6 +27,18 @@ function currentHourIndex(times) {
     }
   }
   return best
+}
+
+// Timestamped values from the current hour through the end of today (local),
+// for sparklines. Equal hourly spacing keeps the X axis time-correct.
+function restOfDaySeries(times, values, fromIndex) {
+  const day = new Date(times[fromIndex]).getDate()
+  const out = []
+  for (let i = fromIndex; i < values.length; i++) {
+    if (new Date(times[i]).getDate() !== day) break
+    out.push({ t: new Date(times[i]).getTime(), v: values[i] })
+  }
+  return out
 }
 
 // Walk the tidal height series to find high/low turning points, then pick out
@@ -72,6 +85,8 @@ function tideInfo(times, heights) {
     nextLow,
     nearestHigh: nearestOfType('high'),
     nearestLow: nearestOfType('low'),
+    highs: events.filter((e) => e.type === 'high').map((e) => e.ms),
+    lows: events.filter((e) => e.type === 'low').map((e) => e.ms),
   }
 }
 
@@ -81,47 +96,60 @@ export async function fetchConditions() {
     fetch(FORECAST_URL),
   ])
   if (!marineRes.ok || !forecastRes.ok) {
-    throw new Error('Weather service is unavailable right now. Please try again.')
+    throw new Error(CONTENT.status.error)
   }
   const marine = await marineRes.json()
   const forecast = await forecastRes.json()
 
-  const h = marine.hourly
-  const idx = currentHourIndex(h.time)
-  const tide = tideInfo(h.time, h.sea_level_height_msl)
+  const mh = marine.hourly
+  const fh = forecast.hourly
+  const idxM = currentHourIndex(mh.time)
+  const idxF = currentHourIndex(fh.time)
+  const tide = tideInfo(mh.time, mh.sea_level_height_msl)
+
+  // Each factor gets its current-hour value plus a rest-of-day series.
+  const field = (times, values, idx) => ({
+    now: values[idx],
+    series: restOfDaySeries(times, values, idx),
+  })
 
   return {
     observedAt: forecast.current.time,
-    windSpeed: forecast.current.wind_speed_10m,
-    windSpeedMax: forecast.daily.wind_speed_10m_max[0],
-    airTemp: forecast.daily.temperature_2m_max[0],
     airTempNow: forecast.current.temperature_2m,
-    rain: forecast.daily.precipitation_sum[0],
     weatherCode: forecast.current.weather_code,
-    waveHeight: h.wave_height[idx],
-    waterTemp: h.sea_surface_temperature[idx],
+    factors: {
+      wind: field(fh.time, fh.wind_speed_10m, idxF),
+      waves: field(mh.time, mh.wave_height, idxM),
+      airTemp: field(fh.time, fh.temperature_2m, idxF),
+      waterTemp: field(mh.time, mh.sea_surface_temperature, idxM),
+      rain: field(fh.time, fh.precipitation, idxF),
+    },
     tide: {
-      height: h.sea_level_height_msl[idx],
+      height: mh.sea_level_height_msl[idxM],
       trend: tide.trend,
       nextHigh: tide.nextHigh,
       nextLow: tide.nextLow,
       nearestHigh: tide.nearestHigh,
       nearestLow: tide.nearestLow,
+      highs: tide.highs,
+      lows: tide.lows,
+      series: restOfDaySeries(mh.time, mh.sea_level_height_msl, idxM),
     },
   }
 }
 
 // WMO weather code → short, friendly description.
 export function describeWeather(code) {
-  if (code == null) return 'Unknown'
-  if (code === 0) return 'Clear sky'
-  if (code <= 2) return 'Mostly sunny'
-  if (code === 3) return 'Overcast'
-  if (code <= 48) return 'Foggy'
-  if (code <= 57) return 'Drizzle'
-  if (code <= 67) return 'Rain'
-  if (code <= 77) return 'Snow'
-  if (code <= 82) return 'Rain showers'
-  if (code <= 86) return 'Snow showers'
-  return 'Thunderstorm'
+  const w = CONTENT.weather
+  if (code == null) return w.unknown
+  if (code === 0) return w.clear
+  if (code <= 2) return w.mostlySunny
+  if (code === 3) return w.overcast
+  if (code <= 48) return w.fog
+  if (code <= 57) return w.drizzle
+  if (code <= 67) return w.rain
+  if (code <= 77) return w.snow
+  if (code <= 82) return w.rainShowers
+  if (code <= 86) return w.snowShowers
+  return w.thunderstorm
 }

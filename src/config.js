@@ -14,10 +14,16 @@ export const THRESHOLDS = {
   windSpeed: { good: 12, ok: 20, unit: 'km/h', higherIsBetter: false },
   // Significant wave height, metres. Flat water is best for paddle-boarding.
   waveHeight: { good: 0.3, ok: 0.6, unit: 'm', higherIsBetter: false },
-  // Daily total precipitation, mm. Dry is nicer.
-  rain: { good: 1, ok: 5, unit: 'mm', higherIsBetter: false },
-  // Air temperature (daily max), °C. Warmer is more pleasant.
+  // Air temperature (current), °C. Warmer is more pleasant.
   airTemp: { good: 18, ok: 12, unit: '°C', higherIsBetter: true },
   // Sea surface temperature, °C. Colder water raises cold-shock risk.
   waterTemp: { good: 16, ok: 11, unit: '°C', higherIsBetter: true },
 }
+
+// Tide is rated green within this many minutes of a high tide, red otherwise.
+export const TIDE_GREEN_WINDOW_MIN = 120
+
+// Rain is a simple dry/wet call: an hour with at least this much rain (mm)
+// counts as wet (red), otherwise dry (green).
+export const RAIN_WET_MM = 0.1
+
