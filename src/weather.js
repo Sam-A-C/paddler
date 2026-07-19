@@ -1,18 +1,18 @@
-import { LOCATION } from './config.js'
+import { CHART_WINDOW_HOURS } from './config.js'
 import { CONTENT } from './content.js'
 
-const MARINE_URL =
+const marineUrl = (loc) =>
   `https://marine-api.open-meteo.com/v1/marine` +
-  `?latitude=${LOCATION.lat}&longitude=${LOCATION.lon}` +
+  `?latitude=${loc.lat}&longitude=${loc.lon}` +
   `&hourly=wave_height,sea_level_height_msl,sea_surface_temperature` +
   `&timezone=auto&forecast_days=2`
 
-const FORECAST_URL =
+const forecastUrl = (loc) =>
   `https://api.open-meteo.com/v1/forecast` +
-  `?latitude=${LOCATION.lat}&longitude=${LOCATION.lon}` +
+  `?latitude=${loc.lat}&longitude=${loc.lon}` +
   `&current=temperature_2m,weather_code` +
-  `&hourly=temperature_2m,wind_speed_10m,precipitation` +
-  `&timezone=auto&forecast_days=1`
+  `&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,precipitation` +
+  `&timezone=auto&forecast_days=2`
 
 // Index of the hourly entry closest to "now".
 function currentHourIndex(times) {
@@ -29,16 +29,21 @@ function currentHourIndex(times) {
   return best
 }
 
-// Timestamped values from the current hour through the end of today (local),
-// for sparklines. Equal hourly spacing keeps the X axis time-correct.
-function restOfDaySeries(times, values, fromIndex) {
-  const day = new Date(times[fromIndex]).getDate()
+// Timestamped values for a rolling window from the current hour, for
+// sparklines. Equal hourly spacing keeps the X axis time-correct.
+function rollingSeries(times, values, fromIndex) {
   const out = []
-  for (let i = fromIndex; i < values.length; i++) {
-    if (new Date(times[i]).getDate() !== day) break
+  const end = Math.min(fromIndex + CHART_WINDOW_HOURS, values.length - 1)
+  for (let i = fromIndex; i <= end; i++) {
     out.push({ t: new Date(times[i]).getTime(), v: values[i] })
   }
   return out
+}
+
+// Smallest angle (degrees) between two compass bearings.
+function angularDistance(a, b) {
+  const d = Math.abs((((a - b) % 360) + 360) % 360)
+  return d > 180 ? 360 - d : d
 }
 
 // Walk the tidal height series to find high/low turning points, then pick out
@@ -90,13 +95,16 @@ function tideInfo(times, heights) {
   }
 }
 
-export async function fetchConditions() {
+export async function fetchConditions(location) {
   const [marineRes, forecastRes] = await Promise.all([
-    fetch(MARINE_URL),
-    fetch(FORECAST_URL),
+    fetch(marineUrl(location)),
+    fetch(forecastUrl(location)),
   ])
-  if (!marineRes.ok || !forecastRes.ok) {
+  if (!forecastRes.ok) {
     throw new Error(CONTENT.status.error)
+  }
+  if (!marineRes.ok) {
+    throw noSeaError()
   }
   const marine = await marineRes.json()
   const forecast = await forecastRes.json()
@@ -105,12 +113,24 @@ export async function fetchConditions() {
   const fh = forecast.hourly
   const idxM = currentHourIndex(mh.time)
   const idxF = currentHourIndex(fh.time)
+
+  // Inland spots: the marine API answers, but with empty/null sea data.
+  if (mh.sea_level_height_msl?.[idxM] == null || mh.wave_height?.[idxM] == null) {
+    throw noSeaError()
+  }
+
   const tide = tideInfo(mh.time, mh.sea_level_height_msl)
 
-  // Each factor gets its current-hour value plus a rest-of-day series.
+  // Offshore-ness: 0° = wind from the sea (onshore) … 180° = straight offshore.
+  const facing = location.facing ?? 180
+  const offshoreness = fh.wind_direction_10m.map((d) =>
+    d == null ? null : angularDistance(d, facing),
+  )
+
+  // Each factor gets its current-hour value plus a rolling 12h series.
   const field = (times, values, idx) => ({
     now: values[idx],
-    series: restOfDaySeries(times, values, idx),
+    series: rollingSeries(times, values, idx),
   })
 
   return {
@@ -119,6 +139,10 @@ export async function fetchConditions() {
     weatherCode: forecast.current.weather_code,
     factors: {
       wind: field(fh.time, fh.wind_speed_10m, idxF),
+      windDir: {
+        ...field(fh.time, offshoreness, idxF),
+        bearing: fh.wind_direction_10m[idxF],
+      },
       waves: field(mh.time, mh.wave_height, idxM),
       airTemp: field(fh.time, fh.temperature_2m, idxF),
       waterTemp: field(mh.time, mh.sea_surface_temperature, idxM),
@@ -133,9 +157,15 @@ export async function fetchConditions() {
       nearestLow: tide.nearestLow,
       highs: tide.highs,
       lows: tide.lows,
-      series: restOfDaySeries(mh.time, mh.sea_level_height_msl, idxM),
+      series: rollingSeries(mh.time, mh.sea_level_height_msl, idxM),
     },
   }
+}
+
+function noSeaError() {
+  const err = new Error(CONTENT.setup.noSea)
+  err.code = 'nosea'
+  return err
 }
 
 // WMO weather code → short, friendly description.

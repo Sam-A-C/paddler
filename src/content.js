@@ -22,30 +22,53 @@ export const CONTENT = {
   },
 
   // Overall verdict, keyed by the worst factor rating.
+  // {name} is replaced with the saved user name.
   verdicts: {
     poor: {
-      title: 'Not right now Giù',
+      title: 'Not right now {name}',
       blurb: 'Conditions look unfavourable for sea paddle-boarding today.',
     },
     ok: {
-      title: 'Doable — take care Giù',
+      title: 'Doable — take care {name}',
       blurb: 'It could work, but conditions are marginal. Check locally before heading out.',
     },
     good: {
-      title: 'Great time to paddle Giù!',
+      title: 'Great time to paddle {name}!',
       blurb: 'Conditions look good for getting out on the water.',
     },
+  },
+
+  // "Next status change" line under the verdict. {emoji} = the rating it
+  // changes to, {time} = when.
+  nextChange: {
+    improves: 'Improving to {emoji} at {time}',
+    worsens: 'Turning {emoji} at {time}',
+    steady: 'No change expected in the next 12 hours',
   },
 
   // Per-factor label, icon and unit. Tide adds rising/falling trend arrows.
   factors: {
     wind: { label: 'Wind', icon: '💨', unit: 'km/h' },
+    windDir: { label: 'Wind dir', icon: '🧭' },
     waves: { label: 'Waves', icon: '🌊', unit: 'm' },
     airTemp: { label: 'Air temp', icon: '🌡️', unit: '°C' },
     waterTemp: { label: 'Sea temp', icon: '🐟', unit: '°C' },
     rain: { label: 'Rain', icon: '🌧️', unit: 'mm/h' },
     tide: { label: 'Tide', icon: '🌒', unit: 'm', rising: '↑', falling: '↓' },
   },
+
+  // Wind direction words, keyed by its rating (onshore good … offshore poor).
+  windWords: {
+    good: 'onshore',
+    ok: 'cross-shore',
+    poor: 'offshore',
+  },
+
+  // 16-wind compass names, clockwise from north.
+  cardinals: [
+    'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+    'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW',
+  ],
 
   // Rating badge shown on each factor row.
   ratingEmoji: {
@@ -62,6 +85,27 @@ export const CONTENT = {
     becomesOk: '~',
     becomesPoor: '✗',
   },
+
+  // First-run setup & location picker.
+  setup: {
+    intro: 'Tell us who you are and where you paddle.',
+    nameLabel: "What's your name?",
+    namePlaceholder: 'Your name',
+    beachLabel: 'Your beach',
+    searchPlaceholder: 'Search for another beach…',
+    searchButton: 'Search',
+    searching: 'Searching…',
+    noResults: 'No places found — try another name.',
+    facingLabel: 'Which way does the beach face (looking out to sea)?',
+    facingGuessing: 'Estimating from the coastline…',
+    save: "Let's paddle",
+    cancel: 'Cancel',
+    noSea: "Couldn't find sea data there — try a coastal spot.",
+  },
+
+  // Top-right reset button (clears saved name & beach).
+  reset: '↺',
+  resetTitle: 'Change name or beach',
 
   // WMO weather-code descriptions (see describeWeather in weather.js).
   weather: {

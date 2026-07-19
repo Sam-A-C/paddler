@@ -1,9 +1,12 @@
-// Hardcoded location for now. Later this can become a selectable list.
-export const LOCATION = {
+// Default location, used to pre-fill first-run setup. The active location
+// (with the user's name) lives in localStorage — see prefs in App.jsx.
+// `facing` = compass bearing the beach looks out to sea (Worthing faces ~south).
+export const DEFAULT_LOCATION = {
   name: 'Worthing',
   region: 'West Sussex, UK',
   lat: 50.81,
   lon: -0.37,
+  facing: 180,
 }
 
 // Thresholds used to rate each condition.
@@ -20,6 +23,11 @@ export const THRESHOLDS = {
   waterTemp: { good: 16, ok: 11, unit: '°C', higherIsBetter: true },
 }
 
+// Wind direction is rated on "offshore-ness": the angular distance (degrees)
+// between where the wind blows from and the beach's seaward facing.
+// 0 = pure onshore (from the sea), 180 = pure offshore (blows you out to sea).
+export const WIND_DIR_BANDS = { onshoreMax: 67.5, crossMax: 112.5 }
+
 // Tide is rated green within this many minutes of a high tide, red otherwise.
 export const TIDE_GREEN_WINDOW_MIN = 120
 
@@ -27,3 +35,5 @@ export const TIDE_GREEN_WINDOW_MIN = 120
 // counts as wet (red), otherwise dry (green).
 export const RAIN_WET_MM = 0.1
 
+// Charts cover a rolling window of this many hours from now.
+export const CHART_WINDOW_HOURS = 12

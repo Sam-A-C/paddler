@@ -1,4 +1,4 @@
-import { THRESHOLDS, TIDE_GREEN_WINDOW_MIN, RAIN_WET_MM } from './config.js'
+import { THRESHOLDS, WIND_DIR_BANDS, TIDE_GREEN_WINDOW_MIN, RAIN_WET_MM } from './config.js'
 import { CONTENT } from './content.js'
 
 // Rate a single value against its threshold config.
@@ -28,6 +28,7 @@ export function evaluate(conditions) {
     buildValueFactor('wind', f.wind, THRESHOLDS.windSpeed, (v) =>
       `${Math.round(v)} ${U.wind.unit}`,
     ),
+    buildWindDirFactor(f.windDir),
     buildValueFactor('waves', f.waves, THRESHOLDS.waveHeight, (v) =>
       `${v.toFixed(2)} ${U.waves.unit}`,
     ),
@@ -51,7 +52,47 @@ export function evaluate(conditions) {
 
   const verdict = { level: worst, ...CONTENT.verdicts[worst] }
 
-  return { verdict, factors }
+  return { verdict, factors, nextChange: nextOverallChange(factors) }
+}
+
+// The first moment the overall (worst-of) status will change, found by
+// replaying every factor's exact rating-change times in order. Returns
+// { t, label, from, to, direction } or null if steady all window.
+function nextOverallChange(factors) {
+  const current = {}
+  const events = []
+  for (const f of factors) {
+    current[f.key] = f.rating
+    for (const m of f.markers || []) {
+      if (m.type === 'transition' && m.t != null) {
+        events.push({ key: f.key, t: m.t, rating: m.rating })
+      }
+    }
+  }
+  events.sort((a, b) => a.t - b.t)
+
+  const worstOf = () =>
+    Object.values(current).reduce((a, r) => (RATING_RANK[r] > RATING_RANK[a] ? r : a), 'good')
+
+  const from = worstOf()
+  for (const e of events) {
+    if (e.t <= Date.now()) {
+      current[e.key] = e.rating
+      continue
+    }
+    current[e.key] = e.rating
+    const now = worstOf()
+    if (now !== from) {
+      return {
+        t: e.t,
+        label: fmtTime(e.t),
+        from,
+        to: now,
+        direction: RATING_RANK[now] < RATING_RANK[from] ? 'improves' : 'worsens',
+      }
+    }
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +147,13 @@ function transitionMarkers(pts) {
   for (let i = 0; i < pts.length - 1; i++) {
     for (const s of pts[i].splits || []) {
       const t = pts[i].t + s.f * (pts[i + 1].t - pts[i].t)
-      out.push({ type: 'transition', rating: s.rating, xFrac: (t - t0) / span, label: fmtTime(t) })
+      out.push({
+        type: 'transition',
+        rating: s.rating,
+        t,
+        xFrac: (t - t0) / span,
+        label: fmtTime(t),
+      })
     }
   }
   return out
@@ -131,6 +178,36 @@ function buildValueFactor(key, data, cfg, format) {
     value: data.now,
     display: format(data.now),
     rating: rateVal(data.now),
+    series: toSeries(pts),
+    chart: 'area',
+    markers: transitionMarkers(pts),
+  }
+}
+
+// Wind direction rates "offshore-ness" — the angular distance between where
+// the wind blows from and the beach's seaward facing (0° onshore … 180°
+// offshore). Onshore is good; offshore blows you out to sea, so it's poor.
+function buildWindDirFactor(data) {
+  const meta = CONTENT.factors.windDir
+  const rateVal = (v) => {
+    if (v == null || Number.isNaN(v)) return 'poor'
+    if (v <= WIND_DIR_BANDS.onshoreMax) return 'good'
+    if (v <= WIND_DIR_BANDS.crossMax) return 'ok'
+    return 'poor'
+  }
+  const pts = buildSeries(data.series, rateVal, [
+    WIND_DIR_BANDS.onshoreMax,
+    WIND_DIR_BANDS.crossMax,
+  ])
+  const rating = rateVal(data.now)
+  const cardinal = CONTENT.cardinals[Math.round(data.bearing / 22.5) % 16]
+  return {
+    key: 'windDir',
+    label: meta.label,
+    icon: meta.icon,
+    value: data.now,
+    display: `${cardinal} · ${CONTENT.windWords[rating]}`,
+    rating,
     series: toSeries(pts),
     chart: 'area',
     markers: transitionMarkers(pts),

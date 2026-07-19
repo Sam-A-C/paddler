@@ -1,28 +1,79 @@
 import { useEffect, useState } from 'react'
-import { LOCATION } from './config.js'
+import { DEFAULT_LOCATION } from './config.js'
 import { CONTENT } from './content.js'
 import { fetchConditions, describeWeather } from './weather.js'
 import { evaluate } from './suitability.js'
+import { searchLocations, guessFacing } from './geo.js'
 
 const RATING_EMOJI = CONTENT.ratingEmoji
+const PREFS_KEY = 'paddler:prefs'
+
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY))
+    if (!p?.name || !p?.location?.name || p.location.lat == null) return null
+    return p
+  } catch {
+    return null
+  }
+}
+
+// Fill {placeholders}, then tidy the spacing/punctuation left by empty values.
+function fill(tpl, vars) {
+  return tpl
+    .replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '')
+    .replace(/\s+([!?.,])/g, '$1')
+    .replace(/ {2,}/g, ' ')
+    .trim()
+}
 
 export default function App() {
+  const [prefs, setPrefs] = useState(loadPrefs)
+  const [editing, setEditing] = useState(false)
+  const [setupError, setSetupError] = useState(null)
   const [state, setState] = useState({ status: 'loading' })
 
-  async function load() {
+  const inSetup = !prefs || editing
+
+  async function load(location) {
     setState({ status: 'loading' })
     try {
-      const conditions = await fetchConditions()
+      const conditions = await fetchConditions(location)
       const result = evaluate(conditions)
       setState({ status: 'ready', conditions, result })
     } catch (err) {
+      if (err.code === 'nosea') {
+        setSetupError(err.message)
+        setEditing(true)
+        return
+      }
       setState({ status: 'error', message: err.message })
     }
   }
 
   useEffect(() => {
-    load()
-  }, [])
+    if (prefs && !editing) load(prefs.location)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefs])
+
+  function handleSave(next) {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(next))
+    setSetupError(null)
+    setEditing(false)
+    setPrefs(next) // new object identity → the effect above refetches
+  }
+
+  function handleReset() {
+    localStorage.removeItem(PREFS_KEY)
+    setSetupError(null)
+    setEditing(true) // prefs kept in memory to pre-fill the form
+  }
+
+  function handleCancel() {
+    setEditing(false)
+    setSetupError(null)
+    if (state.status !== 'ready') load(prefs.location)
+  }
 
   const today = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -33,25 +84,56 @@ export default function App() {
   return (
     <div className="page">
       <main className="card">
+        {!inSetup && (
+          <button
+            className="reset"
+            onClick={handleReset}
+            title={CONTENT.resetTitle}
+            aria-label={CONTENT.resetTitle}
+          >
+            {CONTENT.reset}
+          </button>
+        )}
         <header className="header">
           <div className="brand">{CONTENT.brand}</div>
-          <div className="location">
-            {LOCATION.name} <span className="region">· {LOCATION.region}</span>
-          </div>
-          <div className="date">{today}</div>
+          {!inSetup && (
+            <>
+              <button className="location" onClick={() => setEditing(true)}>
+                {prefs.location.name} <span className="region">· {prefs.location.region}</span>
+              </button>
+              <div className="date">{today}</div>
+            </>
+          )}
         </header>
 
-        {state.status === 'loading' && <p className="status">{CONTENT.status.loading}</p>}
+        {inSetup ? (
+          <Setup
+            initial={prefs || { name: '', location: DEFAULT_LOCATION }}
+            error={setupError}
+            canCancel={!!prefs && editing && !setupError}
+            onCancel={handleCancel}
+            onSave={handleSave}
+          />
+        ) : (
+          <>
+            {state.status === 'loading' && <p className="status">{CONTENT.status.loading}</p>}
 
-        {state.status === 'error' && (
-          <div className="status error">
-            <p>{state.message}</p>
-            <button onClick={load}>{CONTENT.status.retry}</button>
-          </div>
-        )}
+            {state.status === 'error' && (
+              <div className="status error">
+                <p>{state.message}</p>
+                <button onClick={() => load(prefs.location)}>{CONTENT.status.retry}</button>
+              </div>
+            )}
 
-        {state.status === 'ready' && (
-          <Result conditions={state.conditions} result={state.result} onRefresh={load} />
+            {state.status === 'ready' && (
+              <Result
+                conditions={state.conditions}
+                result={state.result}
+                name={prefs.name}
+                onRefresh={() => load(prefs.location)}
+              />
+            )}
+          </>
         )}
       </main>
       <footer className="footer">
@@ -65,13 +147,145 @@ export default function App() {
   )
 }
 
-function Result({ conditions, result, onRefresh }) {
-  const { verdict, factors } = result
+// First-run setup and location picker: name, beach search, facing confirm.
+function Setup({ initial, error, canCancel, onCancel, onSave }) {
+  const S = CONTENT.setup
+  const [name, setName] = useState(initial.name || '')
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState(null)
+  const [searching, setSearching] = useState(false)
+  const [chosen, setChosen] = useState(initial.location || null)
+  const [facing, setFacing] = useState(initial.location?.facing ?? null)
+  const [guessing, setGuessing] = useState(false)
+
+  async function runSearch(e) {
+    e.preventDefault()
+    const q = query.trim()
+    if (!q || searching) return
+    setSearching(true)
+    try {
+      setResults(await searchLocations(q))
+    } catch {
+      setResults([])
+    }
+    setSearching(false)
+  }
+
+  async function choose(loc) {
+    setChosen(loc)
+    setResults(null)
+    setQuery('')
+    setFacing(null)
+    setGuessing(true)
+    const guess = await guessFacing(loc.lat, loc.lon).catch(() => null)
+    setGuessing(false)
+    if (guess != null) setFacing(guess)
+  }
+
+  const canSave = name.trim() && chosen && facing != null
+
+  return (
+    <div className="setup">
+      {error ? <p className="setup-error">{error}</p> : <p className="setup-hint">{S.intro}</p>}
+
+      <label className="setup-label">
+        {S.nameLabel}
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={S.namePlaceholder}
+        />
+      </label>
+
+      <div className="setup-label">{S.beachLabel}</div>
+      {chosen && (
+        <div className="chosen">
+          {chosen.name} <span className="region">· {chosen.region}</span>
+        </div>
+      )}
+      <form className="search-row" onSubmit={runSearch}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={S.searchPlaceholder}
+        />
+        <button type="submit" disabled={searching}>
+          {searching ? S.searching : S.searchButton}
+        </button>
+      </form>
+      {results && results.length === 0 && !searching && (
+        <p className="setup-hint">{S.noResults}</p>
+      )}
+      {results && results.length > 0 && (
+        <ul className="search-results">
+          {results.map((r, i) => (
+            <li key={i}>
+              <button type="button" onClick={() => choose(r)}>
+                {r.name} <span className="region">· {r.region}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {chosen && (
+        <>
+          <div className="setup-label">{S.facingLabel}</div>
+          {guessing && <p className="setup-hint">{S.facingGuessing}</p>}
+          <div className="facing-grid">
+            {COMPASS.map((c) => (
+              <button
+                key={c.deg}
+                type="button"
+                className={facing === c.deg ? 'facing selected' : 'facing'}
+                onClick={() => setFacing(c.deg)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="setup-actions">
+        <button
+          className="setup-save"
+          disabled={!canSave}
+          onClick={() => onSave({ name: name.trim(), location: { ...chosen, facing } })}
+        >
+          {S.save}
+        </button>
+        {canCancel && (
+          <button className="setup-cancel" type="button" onClick={onCancel}>
+            {S.cancel}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// The 8 main winds for the facing picker (labels reuse the 16-wind names).
+const COMPASS = Array.from({ length: 8 }, (_, i) => ({
+  label: CONTENT.cardinals[i * 2],
+  deg: i * 45,
+}))
+
+function Result({ conditions, result, name, onRefresh }) {
+  const { verdict, factors, nextChange } = result
   return (
     <>
       <section className={`verdict verdict-${verdict.level}`}>
-        <h1>{verdict.title}</h1>
+        <h1>{fill(verdict.title, { name })}</h1>
         <p>{verdict.blurb}</p>
+        <p className="next-change">
+          {nextChange
+            ? fill(CONTENT.nextChange[nextChange.direction], {
+                emoji: RATING_EMOJI[nextChange.to],
+                time: nextChange.label,
+              })
+            : CONTENT.nextChange.steady}
+        </p>
         <p className="weather-now">
           {CONTENT.nowPrefix} {describeWeather(conditions.weatherCode)},{' '}
           {Math.round(conditions.airTempNow)}
@@ -104,7 +318,7 @@ function Result({ conditions, result, onRefresh }) {
   )
 }
 
-// Tiny inline chart for a factor's rest-of-day trend.
+// Tiny inline chart for a factor's rolling-window trend.
 // X is time-correct (equal hourly spacing); Y auto-scales to the visible range.
 // `points` is [{ v, rating }]; each segment is coloured by its rating, so the
 // chart can change colour along the time axis. Segments split at midpoints so

@@ -76,12 +76,34 @@ body {
 }
 
 .card {
+  position: relative;
   width: 100%;
   max-width: var(--content-width);
   background: var(--card);
   border-radius: var(--radius-card);
   padding: 24px;
   box-shadow: var(--shadow-card);
+}
+
+/* Top-right reset: clears the saved name & beach. */
+.reset {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reset:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
 }
 
 .footer {
@@ -113,10 +135,21 @@ body {
   color: var(--muted);
 }
 
+/* The beach name is a button — click to search for another beach. */
 .location {
   font-size: 24px;
   font-weight: 700;
   margin-top: 4px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.location:hover {
+  text-decoration: underline dotted;
 }
 
 .region {
@@ -197,8 +230,15 @@ body {
   color: var(--poor-ink);
 }
 
+/* "Next status change" line inside the verdict banner. */
+.next-change {
+  margin-top: 8px !important;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .weather-now {
-  margin-top: 10px !important;
+  margin-top: 6px !important;
   font-size: 14px;
   opacity: 0.85;
 }
@@ -363,5 +403,177 @@ body {
 }
 .spark-fill-poor {
   fill: var(--poor-bg);
+}
+
+/* -----------------------------------------------------------------------------
+   9. Setup screen (first run + location picker)
+   -------------------------------------------------------------------------- */
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.setup-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--poor-bg);
+  color: var(--poor-ink);
+  font-size: 14px;
+}
+
+.setup-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.setup-label {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.setup input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 14px;
+  background: var(--surface);
+}
+
+.setup input:focus {
+  outline: 2px solid var(--sea-1);
+  border-color: transparent;
+}
+
+.chosen {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border-left: 4px solid var(--sea-1);
+  font-weight: 600;
+}
+
+.search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.search-row input {
+  margin-top: 0;
+}
+
+.search-row button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 0 14px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.search-row button:hover {
+  background: var(--surface-hover);
+}
+
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.search-results button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.search-results li:last-child button {
+  border-bottom: 0;
+}
+
+.search-results button:hover {
+  background: var(--surface);
+}
+
+.facing-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.facing {
+  padding: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.facing:hover {
+  background: var(--surface-hover);
+}
+
+.facing.selected {
+  background: var(--sea-2);
+  border-color: var(--sea-2);
+  color: var(--on-sea-strong);
+  font-weight: 700;
+}
+
+.setup-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.setup-save {
+  flex: 1;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--sea-2);
+  color: var(--on-sea-strong);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.setup-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setup-save:not(:disabled):hover {
+  background: var(--sea-3);
+}
+
+.setup-cancel {
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.setup-cancel:hover {
+  background: var(--surface-hover);
 }
 
