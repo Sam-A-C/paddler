@@ -45,14 +45,63 @@ export function evaluate(conditions) {
   const tideFactor = buildTideFactor(conditions.tide)
   if (tideFactor) factors.push(tideFactor)
 
-  const worst = factors.reduce(
+  // Wind direction only matters while wind speed is marginal: no wind and the
+  // direction is moot, too much wind and it's poor whichever way it blows. For
+  // the verdict and next-change timeline, mask it to neutral outside that band.
+  const windFactor = factors.find((x) => x.key === 'wind')
+  const dirFactor = factors.find((x) => x.key === 'windDir')
+  const verdictFactors = factors.map((x) =>
+    x.key === 'windDir' ? maskedWindDir(windFactor.pts, dirFactor.pts) : x,
+  )
+
+  const worst = verdictFactors.reduce(
     (acc, f) => (RATING_RANK[f.rating] > RATING_RANK[acc] ? f.rating : acc),
     'good',
   )
 
   const verdict = { level: worst, ...CONTENT.verdicts[worst] }
 
-  return { verdict, factors, nextChange: nextOverallChange(factors) }
+  return { verdict, factors, nextChange: nextOverallChange(verdictFactors) }
+}
+
+// A factor's piecewise rating over time: initial rating plus exact-change events.
+function timelineOf(pts) {
+  const events = []
+  for (let i = 0; i < pts.length - 1; i++) {
+    for (const s of pts[i].splits || []) {
+      events.push({ t: pts[i].t + s.f * (pts[i + 1].t - pts[i].t), rating: s.rating })
+    }
+  }
+  return { initial: pts[0]?.rating ?? 'good', events: events.sort((a, b) => a.t - b.t) }
+}
+
+// Effective wind-direction rating: the raw direction rating while wind speed
+// is 'ok', neutral ('good') otherwise. Returns a shadow factor with the same
+// shape nextOverallChange and the worst-of reduce consume.
+function maskedWindDir(windPts, dirPts) {
+  const wind = timelineOf(windPts)
+  const dir = timelineOf(dirPts)
+  const all = [
+    ...wind.events.map((e) => ({ ...e, src: 'wind' })),
+    ...dir.events.map((e) => ({ ...e, src: 'dir' })),
+  ].sort((a, b) => a.t - b.t)
+
+  let windR = wind.initial
+  let dirR = dir.initial
+  const eff = () => (windR === 'ok' ? dirR : 'good')
+  const initial = eff()
+  let cur = initial
+  const markers = []
+  for (const e of all) {
+    if (e.src === 'wind') windR = e.rating
+    else dirR = e.rating
+    const now = eff()
+    if (now !== cur) {
+      markers.push({ type: 'transition', t: e.t, rating: now })
+      cur = now
+    }
+  }
+  return { key: 'windDir', rating: initial, markers }
 }
 
 // The first moment the overall (worst-of) status will change, found by
@@ -178,6 +227,7 @@ function buildValueFactor(key, data, cfg, format) {
     value: data.now,
     display: format(data.now),
     rating: rateVal(data.now),
+    pts,
     series: toSeries(pts),
     chart: 'area',
     markers: transitionMarkers(pts),
@@ -208,6 +258,7 @@ function buildWindDirFactor(data) {
     value: data.now,
     display: `${cardinal} · ${CONTENT.windWords[rating]}`,
     rating,
+    pts,
     series: toSeries(pts),
     chart: 'area',
     markers: transitionMarkers(pts),

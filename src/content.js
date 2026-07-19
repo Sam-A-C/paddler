@@ -49,7 +49,9 @@ export const CONTENT = {
   // Per-factor label, icon and unit. Tide adds rising/falling trend arrows.
   factors: {
     wind: { label: 'Wind', icon: '💨', unit: 'km/h' },
-    windDir: { label: 'Wind dir', icon: '🧭' },
+    // Shown only while wind is marginal; otherwise collapsed behind a toggle
+    // in the Wind row (direction is moot in no wind, and moot in a gale).
+    windDir: { label: 'Wind dir', icon: '🧭', show: '▾ direction', hide: '▴ direction' },
     waves: { label: 'Waves', icon: '🌊', unit: 'm' },
     airTemp: { label: 'Air temp', icon: '🌡️', unit: '°C' },
     waterTemp: { label: 'Sea temp', icon: '🐟', unit: '°C' },

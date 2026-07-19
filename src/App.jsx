@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_LOCATION } from './config.js'
 import { CONTENT } from './content.js'
 import { fetchConditions, describeWeather } from './weather.js'
@@ -273,6 +273,14 @@ const COMPASS = Array.from({ length: 8 }, (_, i) => ({
 
 function Result({ conditions, result, name, onRefresh }) {
   const { verdict, factors, nextChange } = result
+  const [showDir, setShowDir] = useState(false)
+
+  // Wind direction is only relevant while wind speed is marginal; otherwise
+  // it hides behind a toggle in the Wind row.
+  const windRelevant = factors.find((f) => f.key === 'wind')?.rating === 'ok'
+  const visibleFactors = factors.filter(
+    (f) => f.key !== 'windDir' || windRelevant || showDir,
+  )
   return (
     <>
       <section className={`verdict verdict-${verdict.level}`}>
@@ -294,7 +302,7 @@ function Result({ conditions, result, name, onRefresh }) {
       </section>
 
       <section className="factors">
-        {factors.map((f) => {
+        {visibleFactors.map((f) => {
           const hasChart = f.series && f.series.length > 1
           return (
             <div
@@ -302,7 +310,14 @@ function Result({ conditions, result, name, onRefresh }) {
               className={`factor factor-${f.rating}${hasChart ? ' factor--chart' : ''}`}
             >
               <span className="factor-icon">{f.icon}</span>
-              <span className="factor-label">{f.label}</span>
+              <span className="factor-label">
+                {f.label}
+                {f.key === 'wind' && !windRelevant && (
+                  <button className="dir-toggle" onClick={() => setShowDir((s) => !s)}>
+                    {showDir ? CONTENT.factors.windDir.hide : CONTENT.factors.windDir.show}
+                  </button>
+                )}
+              </span>
               <span className="factor-value">{f.display}</span>
               <span className="factor-rating">{RATING_EMOJI[f.rating]}</span>
               {hasChart && <Sparkline points={f.series} kind={f.chart} markers={f.markers} />}
@@ -333,7 +348,24 @@ function Sparkline({ points, kind = 'line', markers = [] }) {
   const range = max - min || 1
   const np = points.length
   const n = (x) => x.toFixed(1)
-  const labelShown = visibleLabels(markers)
+
+  // Measure the rendered chart width so label-overlap suppression works in
+  // real pixels — narrow (mobile) charts drop more labels automatically.
+  const wrapRef = useRef(null)
+  const [wrapW, setWrapW] = useState(320)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const update = () => {
+      const width = el.getBoundingClientRect().width
+      if (width) setWrapW(width)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const labelShown = visibleLabels(markers, wrapW)
 
   // Geometry over a *fractional* index t (0..np-1). X spans the full width so it
   // matches the overlay markers; Y is a smooth Catmull-Rom curve through the
@@ -422,7 +454,7 @@ function Sparkline({ points, kind = 'line', markers = [] }) {
   addPiece(cur, curRating, key++)
 
   return (
-    <span className="spark-wrap">
+    <span className="spark-wrap" ref={wrapRef}>
       <svg
         className="spark"
         viewBox={`0 0 ${w} ${h}`}
@@ -459,18 +491,26 @@ function Sparkline({ points, kind = 'line', markers = [] }) {
   )
 }
 
-// Decide which marker labels to render: walking left→right, drop any whose
-// position is within MIN_LABEL_GAP of the last one we kept.
-const MIN_LABEL_GAP = 0.15
-function visibleLabels(markers) {
+// Decide which marker labels to render. Each label's pixel extent is estimated
+// from its text and the measured chart width (mirroring markerStyle's edge
+// clamping), then walking left→right any label that would overlap the last
+// kept one is dropped — so the first label of a cluster wins at every width.
+const LABEL_CHAR_PX = 5.4 // ≈ average glyph width at the 9px label size
+const LABEL_GAP_PX = 6
+function visibleLabels(markers, widthPx) {
   const shown = new Set()
-  let lastX = -Infinity
-  for (const { i, xFrac } of markers
-    .map((m, i) => ({ i, xFrac: m.xFrac }))
-    .sort((a, b) => a.xFrac - b.xFrac)) {
-    if (xFrac - lastX >= MIN_LABEL_GAP) {
-      shown.add(i)
-      lastX = xFrac
+  const items = markers
+    .map((m, i) => {
+      const half = (`${markerPrefix(m)} ${m.label}`.length * LABEL_CHAR_PX) / 2
+      const cx = Math.min(Math.max(m.xFrac * widthPx, half), widthPx - half)
+      return { i, xFrac: m.xFrac, left: cx - half, right: cx + half }
+    })
+    .sort((a, b) => a.xFrac - b.xFrac)
+  let lastRight = -Infinity
+  for (const it of items) {
+    if (it.left >= lastRight + LABEL_GAP_PX) {
+      shown.add(it.i)
+      lastRight = it.right
     }
   }
   return shown
