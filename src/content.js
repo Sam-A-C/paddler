@@ -47,17 +47,27 @@ export const CONTENT = {
   },
 
   // Per-factor label, icon and unit. Tide adds rising/falling trend arrows.
+  // `minNote` is the hint shown when a factor is minimised to a compact box.
   factors: {
     wind: { label: 'Wind', icon: '💨', unit: 'km/h' },
-    // Shown only while wind is marginal; otherwise collapsed behind a toggle
-    // in the Wind row (direction is moot in no wind, and moot in a gale).
-    windDir: { label: 'Wind dir', icon: '🧭', show: '▾ direction', hide: '▴ direction' },
+    windDir: { label: 'Wind dir', icon: '🧭', minNote: 'only matters in marginal wind' },
     waves: { label: 'Waves', icon: '🌊', unit: 'm' },
     airTemp: { label: 'Air temp', icon: '🌡️', unit: '°C' },
     waterTemp: { label: 'Sea temp', icon: '🐟', unit: '°C' },
     rain: { label: 'Rain', icon: '🌧️', unit: 'mm/h' },
-    tide: { label: 'Tide', icon: '🌒', unit: 'm', rising: '↑', falling: '↓' },
+    tide: {
+      label: 'Tide',
+      icon: '🌒',
+      unit: 'm',
+      rising: '↑',
+      falling: '↓',
+      minNote: 'little tidal range here',
+    },
   },
+
+  // Affordances on a minimised box.
+  minExpand: '▾',
+  minCollapse: '▴',
 
   // Wind direction words, keyed by its rating (onshore good … offshore poor).
   windWords: {

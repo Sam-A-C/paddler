@@ -273,14 +273,15 @@ const COMPASS = Array.from({ length: 8 }, (_, i) => ({
 
 function Result({ conditions, result, name, onRefresh }) {
   const { verdict, factors, nextChange } = result
-  const [showDir, setShowDir] = useState(false)
+  // Keys of minimised factors the user has manually expanded this render.
+  const [expanded, setExpanded] = useState(() => new Set())
+  const toggle = (key) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
 
-  // Wind direction is only relevant while wind speed is marginal; otherwise
-  // it hides behind a toggle in the Wind row.
-  const windRelevant = factors.find((f) => f.key === 'wind')?.rating === 'ok'
-  const visibleFactors = factors.filter(
-    (f) => f.key !== 'windDir' || windRelevant || showDir,
-  )
   return (
     <>
       <section className={`verdict verdict-${verdict.level}`}>
@@ -302,34 +303,57 @@ function Result({ conditions, result, name, onRefresh }) {
       </section>
 
       <section className="factors">
-        {visibleFactors.map((f) => {
-          const hasChart = f.series && f.series.length > 1
-          return (
-            <div
+        {factors.map((f) =>
+          f.minimised && !expanded.has(f.key) ? (
+            <MinBox key={f.key} factor={f} onExpand={() => toggle(f.key)} />
+          ) : (
+            <FactorRow
               key={f.key}
-              className={`factor factor-${f.rating}${hasChart ? ' factor--chart' : ''}`}
-            >
-              <span className="factor-icon">{f.icon}</span>
-              <span className="factor-label">
-                {f.label}
-                {f.key === 'wind' && !windRelevant && (
-                  <button className="dir-toggle" onClick={() => setShowDir((s) => !s)}>
-                    {showDir ? CONTENT.factors.windDir.hide : CONTENT.factors.windDir.show}
-                  </button>
-                )}
-              </span>
-              <span className="factor-value">{f.display}</span>
-              <span className="factor-rating">{RATING_EMOJI[f.rating]}</span>
-              {hasChart && <Sparkline points={f.series} kind={f.chart} markers={f.markers} />}
-            </div>
-          )
-        })}
+              factor={f}
+              collapsible={f.minimised}
+              onCollapse={() => toggle(f.key)}
+            />
+          ),
+        )}
       </section>
 
       <button className="refresh" onClick={onRefresh}>
         {CONTENT.status.refresh}
       </button>
     </>
+  )
+}
+
+// A minimised factor: one compact, muted, clickable line that expands on tap.
+function MinBox({ factor, onExpand }) {
+  const note = CONTENT.factors[factor.key]?.minNote
+  return (
+    <button className="factor factor--min" onClick={onExpand} title={note}>
+      <span className="factor-icon">{factor.icon}</span>
+      <span className="factor-label">{factor.label}</span>
+      <span className="min-note">{note}</span>
+      <span className="min-chevron">{CONTENT.minExpand}</span>
+    </button>
+  )
+}
+
+function FactorRow({ factor: f, collapsible, onCollapse }) {
+  const hasChart = f.series && f.series.length > 1
+  return (
+    <div className={`factor factor-${f.rating}${hasChart ? ' factor--chart' : ''}`}>
+      <span className="factor-icon">{f.icon}</span>
+      <span className="factor-label">
+        {f.label}
+        {collapsible && (
+          <button className="min-collapse" onClick={onCollapse} aria-label="collapse">
+            {CONTENT.minCollapse}
+          </button>
+        )}
+      </span>
+      <span className="factor-value">{f.display}</span>
+      <span className="factor-rating">{RATING_EMOJI[f.rating]}</span>
+      {hasChart && <Sparkline points={f.series} kind={f.chart} markers={f.markers} />}
+    </div>
   )
 }
 

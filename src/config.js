@@ -31,6 +31,10 @@ export const WIND_DIR_BANDS = { onshoreMax: 67.5, crossMax: 112.5 }
 // Tide is rated green within this many minutes of a high tide, red otherwise.
 export const TIDE_GREEN_WINDOW_MIN = 120
 
+// Locations with a tidal range below this (metres) barely notice the tide —
+// the tide box is minimised and left out of the verdict there.
+export const TIDE_SMALL_RANGE_M = 1
+
 // Rain is a simple dry/wet call: an hour with at least this much rain (mm)
 // counts as wet (red), otherwise dry (green).
 export const RAIN_WET_MM = 0.1

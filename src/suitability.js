@@ -1,4 +1,10 @@
-import { THRESHOLDS, WIND_DIR_BANDS, TIDE_GREEN_WINDOW_MIN, RAIN_WET_MM } from './config.js'
+import {
+  THRESHOLDS,
+  WIND_DIR_BANDS,
+  TIDE_GREEN_WINDOW_MIN,
+  TIDE_SMALL_RANGE_M,
+  RAIN_WET_MM,
+} from './config.js'
 import { CONTENT } from './content.js'
 
 // Rate a single value against its threshold config.
@@ -45,14 +51,26 @@ export function evaluate(conditions) {
   const tideFactor = buildTideFactor(conditions.tide)
   if (tideFactor) factors.push(tideFactor)
 
-  // Wind direction only matters while wind speed is marginal: no wind and the
-  // direction is moot, too much wind and it's poor whichever way it blows. For
-  // the verdict and next-change timeline, mask it to neutral outside that band.
+  // Some factors minimise to a compact box (and drop out of the verdict) when
+  // they can't matter here:
+  //  - wind direction is moot unless wind speed is marginal (calm = irrelevant,
+  //    gale = poor whichever way it blows);
+  //  - tide barely moves where the tidal range is tiny.
   const windFactor = factors.find((x) => x.key === 'wind')
   const dirFactor = factors.find((x) => x.key === 'windDir')
-  const verdictFactors = factors.map((x) =>
-    x.key === 'windDir' ? maskedWindDir(windFactor.pts, dirFactor.pts) : x,
-  )
+  const tideFactorObj = factors.find((x) => x.key === 'tide')
+  if (dirFactor) dirFactor.minimised = windFactor.rating !== 'ok'
+  if (tideFactorObj) {
+    tideFactorObj.minimised = (conditions.tide?.range ?? Infinity) < TIDE_SMALL_RANGE_M
+  }
+
+  const verdictFactors = factors.map((x) => {
+    // Wind direction is masked time-aware: it only counts while wind is amber.
+    if (x.key === 'windDir') return maskedWindDir(windFactor.pts, dirFactor.pts)
+    // A minimised tide is dropped from the verdict entirely.
+    if (x.key === 'tide' && x.minimised) return { key: 'tide', rating: 'good', markers: [] }
+    return x
+  })
 
   const worst = verdictFactors.reduce(
     (acc, f) => (RATING_RANK[f.rating] > RATING_RANK[acc] ? f.rating : acc),

@@ -40,6 +40,13 @@ function rollingSeries(times, values, fromIndex) {
   return out
 }
 
+// Peak-to-trough spread of a numeric series (used for the tidal range).
+function seriesRange(values) {
+  const nums = values.filter((v) => v != null && !Number.isNaN(v))
+  if (!nums.length) return 0
+  return Math.max(...nums) - Math.min(...nums)
+}
+
 // Smallest angle (degrees) between two compass bearings.
 function angularDistance(a, b) {
   const d = Math.abs((((a - b) % 360) + 360) % 360)
@@ -150,6 +157,7 @@ export async function fetchConditions(location) {
     },
     tide: {
       height: mh.sea_level_height_msl[idxM],
+      range: seriesRange(mh.sea_level_height_msl),
       trend: tide.trend,
       nextHigh: tide.nextHigh,
       nextLow: tide.nextLow,
